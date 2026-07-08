@@ -1,0 +1,42 @@
+Package: causalmlr
+Type: Package
+Title: Causal Machine Learning with 'mlr3'
+Version: 0.1.0
+Authors@R:
+    person("Damian", "Machlanski", email = "d.machlanski@ed.ac.uk",
+           role = c("aut", "cre"))
+Description: Estimation and evaluation of average and conditional average
+    treatment effects (ATE/CATE) from observational data using machine
+    learning. Provides classical estimators (naive difference in means,
+    inverse propensity weighting, doubly robust / AIPW, double machine
+    learning) and meta-learners (S-, T- and X-Learner), all built on top
+    of the 'mlr3' ecosystem so that any regression or classification
+    learner can be plugged in as a nuisance model. Also includes causal
+    model evaluation utilities (ATE error, PEHE, R-Loss) with optional
+    cross-fitting, and a collection of benchmark datasets commonly used
+    for teaching machine learning for causal inference.
+License: LGPL (>= 2.1)
+URL: https://github.com/dmachlanski/causalmlr
+BugReports: https://github.com/dmachlanski/causalmlr/issues
+Encoding: UTF-8
+LazyData: true
+LazyDataCompression: xz
+Depends:
+    R (>= 4.1.0)
+Imports:
+    mlr3 (>= 0.14.0),
+    stats
+Suggests:
+    knitr,
+    lgr,
+    mlr3learners,
+    mlr3tuning,
+    mlr3tuningspaces,
+    ranger,
+    rmarkdown,
+    rpart,
+    testthat (>= 3.0.0)
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2

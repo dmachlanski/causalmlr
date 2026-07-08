@@ -1,0 +1,227 @@
+---
+title: "Getting started with causalmlr"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with causalmlr}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+`causalmlr` estimates **average treatment effects (ATE)** and **conditional
+average treatment effects (CATE)** from observational data using machine
+learning. All estimators are built on top of the
+[mlr3](https://mlr3.mlr-org.com/) ecosystem, so any mlr3 regression or
+classification learner can be plugged in as a nuisance model.
+
+```{r setup, message = FALSE}
+library(causalmlr)
+library(mlr3)
+
+# silence mlr3's info logging
+lgr::get_logger("mlr3")$set_threshold("warn")
+set.seed(2025)
+```
+
+We use simple `rpart` decision trees throughout this vignette because they
+ship with base R. In practice you will usually get better results with
+stronger learners, e.g. `lrn("regr.ranger")` and `lrn("classif.ranger")`
+from `mlr3learners`.
+
+## ATE estimation
+
+The `sodium` dataset simulates the effect of sodium intake on blood
+pressure (Luque-Fernandez et al., 2019). Age confounds both the treatment
+and the outcome, and the true ATE is **1.05**.
+
+```{r ate-data}
+data(sodium)
+head(sodium)
+```
+
+The naive difference in means ignores the confounder and is heavily biased:
+
+```{r ate-naive}
+naive <- ate_naive(sodium, outcome = "bp", treatment = "sodium")
+naive
+```
+
+Adjusting for age removes (most of) the bias. Inverse propensity weighting
+(IPW) models the treatment assignment, the doubly robust estimator (AIPW)
+additionally models the outcome, and double machine learning (DML) uses
+orthogonalised residuals with cross-fitting:
+
+```{r ate-adjusted}
+ipw <- ate_ipw(sodium, outcome = "bp", treatment = "sodium",
+               ps_learner = lrn("classif.rpart"))
+
+dr <- ate_dr(sodium, outcome = "bp", treatment = "sodium",
+             outcome_learner = lrn("regr.rpart"),
+             ps_learner = lrn("classif.rpart"),
+             folds = 5, ps_trim = 0.01)
+
+dml <- ate_dml(sodium, outcome = "bp", treatment = "sodium",
+               outcome_learner = lrn("regr.rpart"),
+               ps_learner = lrn("classif.rpart"),
+               folds = 5, ps_trim = 0.01)
+dml
+```
+
+`ps_trim = 0.01` clips the estimated propensity scores to $[0.01, 0.99]$.
+Tree-based propensity models can output probabilities of exactly 0 or 1,
+which would make the inverse weights explode - trimming is cheap insurance.
+
+Because the true ATE is known here, we can compare the estimators with the
+absolute ATE error, `eps_ate()`:
+
+```{r ate-eval}
+true_ate <- 1.05
+sapply(list(naive = naive, ipw = ipw, dr = dr, dml = dml),
+       function(est) eps_ate(true_ate, est))
+```
+
+## CATE estimation with meta-learners
+
+The `synth_train` / `synth_test` data follow the data generating process of
+Künzel et al. (2019). The test set holds only covariates plus the true
+effect `tau`, so we can evaluate how well each meta-learner recovers the
+heterogeneous effects.
+
+```{r cate-data}
+data(synth_train)
+data(synth_test)
+head(synth_train)
+```
+
+```{r cate-fit}
+m_s <- s_learner(synth_train, outcome = "y", treatment = "t",
+                 learner = lrn("regr.rpart"))
+
+m_t <- t_learner(synth_train, outcome = "y", treatment = "t",
+                 learner = lrn("regr.rpart"))
+
+m_x <- x_learner(synth_train, outcome = "y", treatment = "t",
+                 learner = lrn("regr.rpart"),
+                 ps_learner = lrn("classif.rpart"))
+```
+
+`predict()` returns a vector of CATE estimates, one per row; `ate()`
+averages them:
+
+```{r cate-predict}
+tau_s <- predict(m_s, synth_test)
+head(tau_s)
+ate(m_s, synth_test)
+```
+
+With ground-truth effects available, the standard evaluation metric is
+PEHE (precision in estimation of heterogeneous effects) - the RMSE between
+true and predicted CATEs:
+
+```{r cate-eval}
+c(S = pehe(synth_test$tau, tau_s),
+  T = pehe(synth_test$tau, predict(m_t, synth_test)),
+  X = pehe(synth_test$tau, predict(m_x, synth_test)))
+```
+
+## Model selection without ground truth: the R-Loss
+
+Real observational data has no `tau` column, so PEHE cannot be computed.
+The **R-Loss** (Nie & Wager, 2021) is an observable score that only needs
+two nuisance models - the conditional outcome mean $m(x) = E[Y \mid X]$ and
+the propensity score $e(x) = P(T = 1 \mid X)$:
+
+$$\tau\text{-risk}_R = \frac{1}{n} \sum_i \Big[ \big(Y^{(i)} - \hat m(X^{(i)})\big)
+  - \big(T^{(i)} - \hat e(X^{(i)})\big)\,\hat\tau(X^{(i)}) \Big]^2$$
+
+A typical workflow: hold out a validation set, fit the nuisance models on
+it once (cross-fitted by default), then score any number of candidate CATE
+models. Here we tune the `maxdepth` hyperparameter of an S-Learner:
+
+```{r rloss}
+idx <- sample(nrow(synth_train), 0.7 * nrow(synth_train))
+train <- synth_train[idx, ]
+valid <- synth_train[-idx, ]
+
+nuis <- rloss_nuisance(valid, outcome = "y", treatment = "t",
+                       outcome_learner = lrn("regr.rpart"),
+                       ps_learner = lrn("classif.rpart"),
+                       folds = 5)
+
+scores <- sapply(1:5, function(md) {
+  m <- s_learner(train, outcome = "y", treatment = "t",
+                 learner = lrn("regr.rpart", maxdepth = md))
+  r_loss(nuis, predict(m, valid))
+})
+data.frame(maxdepth = 1:5, r_loss = scores)
+```
+
+The candidate with the lowest R-Loss is then refit on the full training
+data:
+
+```{r rloss-best}
+best_md <- which.min(scores)
+m_best <- s_learner(synth_train, outcome = "y", treatment = "t",
+                    learner = lrn("regr.rpart", maxdepth = best_md))
+pehe(synth_test$tau, predict(m_best, synth_test))
+```
+
+Note that the same recipe compares *different* estimators too (S vs T vs X,
+or different base learners) - the R-Loss only sees the CATE predictions.
+
+## Tuning nuisance models directly with mlr3tuning
+
+Because every estimator accepts plain mlr3 learners, the alternative
+"direct" tuning strategy - tuning each nuisance model on its own
+supervised objective - composes naturally with `mlr3tuning`. An
+`AutoTuner` is itself a learner, so it can be passed anywhere a learner is
+expected:
+
+```{r mlr3tuning, eval = FALSE}
+library(mlr3tuning)
+
+at <- auto_tuner(
+  tuner = tnr("grid_search", resolution = 5),
+  learner = lrn("regr.rpart", maxdepth = to_tune(1, 10)),
+  resampling = rsmp("cv", folds = 5),
+  measure = msr("regr.mse")
+)
+
+# the base learner is tuned internally when the S-Learner fits it
+m_tuned <- s_learner(synth_train, outcome = "y", treatment = "t",
+                     learner = at)
+```
+
+Keep in mind that the direct strategy optimises a *predictive* objective
+(e.g. MSE), which is not the same as optimising causal quality - the
+R-Loss workflow above targets the causal estimates themselves.
+
+## Included datasets
+
+| Dataset | Type | Ground truth | Task |
+|---|---|---|---|
+| `sodium` | synthetic | ATE = 1.05 | ATE estimation |
+| `synth_train` / `synth_test` | synthetic | `tau` | CATE estimation |
+| `ihdp_train` / `ihdp_test` | semi-synthetic | `tau` | CATE estimation |
+| `jobs_train` / `jobs_test` | real + experiment flag | `e` (randomised subsample) | policy evaluation |
+| `abalone`, `housing` | real | - | regression practice |
+| `diabetes`, `spirals` | real / synthetic | - | classification practice |
+
+## References
+
+- Chernozhukov, V. et al. (2018). Double/debiased machine learning for
+  treatment and structural parameters. *The Econometrics Journal*.
+- Hill, J. L. (2011). Bayesian nonparametric modeling for causal
+  inference. *JCGS*.
+- Künzel, S. R. et al. (2019). Metalearners for estimating heterogeneous
+  treatment effects using machine learning. *PNAS*.
+- Machlanski, D., Samothrakis, S., & Clarke, P. (2023). Hyperparameter
+  tuning and model evaluation in causal effect estimation. *arXiv*.
+- Nie, X., & Wager, S. (2021). Quasi-oracle estimation of heterogeneous
+  treatment effects. *Biometrika*.
