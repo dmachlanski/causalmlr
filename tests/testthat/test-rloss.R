@@ -5,7 +5,7 @@ test_that("rloss_nuisance produces residuals and r_loss ranks models sensibly", 
 
   set.seed(11)
   nuis <- rloss_nuisance(d, outcome_learner = regr_learner(),
-                         ps_learner = classif_learner(), folds = 5)
+                         ps_learner = classif_learner(), folds = 5, ps_trim = 0.01)
   expect_s3_class(nuis, "rloss_nuisance")
   expect_length(nuis$y_res, nrow(d))
   expect_length(nuis$t_res, nrow(d))

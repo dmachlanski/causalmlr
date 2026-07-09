@@ -1,3 +1,0 @@
-source("data-raw/prepare_data.R")  # generates data/*.rda — commit these
-devtools::document()               # generates man/ pages from roxygen
-devtools::check()                  # tests + vignette + full check
