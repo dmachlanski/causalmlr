@@ -1,6 +1,6 @@
 Package: causalmlr
 Type: Package
-Title: Causal Machine Learning with 'mlr3'
+Title: Causal Machine Learning in R
 Version: 0.1.0
 Authors@R:
     person("Damian", "Machlanski", email = "d.machlanski@ed.ac.uk",

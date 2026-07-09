@@ -1,5 +1,6 @@
 ^\.git$
 ^\.gitignore$
+^CITATION\.cff$
 ^\.Rbuildignore$
 ^LICENSE$
 ^labs$

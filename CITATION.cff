@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "causalmlr: Causal Machine Learning in R"
+version: 0.1.0
+date-released: 2026-07-09
+authors:
+  - family-names: Machlanski
+    given-names: Damian
+    email: d.machlanski@ed.ac.uk
+repository-code: "https://github.com/dmachlanski/causalmlr"
+url: "https://github.com/dmachlanski/causalmlr"
+license: LGPL-2.1-or-later
