@@ -289,7 +289,8 @@ predict.x_learner <- function(object, newdata, ...) {
 #' heterogeneous causal effects. *Electronic Journal of Statistics*, 17(2),
 #' 3008-3049.
 #'
-#' @seealso [s_learner()], [t_learner()], [x_learner()], [ate_dr()]
+#' @seealso [s_learner()], [t_learner()], [x_learner()], [r_learner()],
+#'   [ate_dr()]
 #' @export
 dr_learner <- function(data, outcome = "y", treatment = "t", outcome_learner,
                        ps_learner, tau_learner = NULL, covariates = NULL,
@@ -324,6 +325,116 @@ dr_learner <- function(data, outcome = "y", treatment = "t", outcome_learner,
 #' @param ... Ignored.
 #' @export
 predict.dr_learner <- function(object, newdata, ...) {
+  nd <- strip_newdata(object, newdata)
+  predict_regr(object$models$tau, nd)
+}
+
+#' R-Learner for CATE estimation
+#'
+#' The R-Learner (Nie & Wager, 2021) is the heterogeneous-effect
+#' generalisation of the partially linear DML estimator ([ate_dml()]). It
+#' builds on the Robinson decomposition of the model
+#' \eqn{Y = \tau(X) T + g(X) + \varepsilon}:
+#' 1. Cross-fit the two nuisance functions, the conditional outcome mean
+#'    \eqn{\hat m(x) = E[Y | X = x]} (the treatment is excluded from the
+#'    features) and the propensity score \eqn{\hat e(x) = P(T = 1 | X = x)},
+#'    and form the residuals \eqn{\tilde Y = Y - \hat m(X)} and
+#'    \eqn{\tilde T = T - \hat e(X)}.
+#' 2. Estimate the CATE by minimising the R-Loss
+#'    \deqn{\hat\tau = \arg\min_\tau \frac{1}{n} \sum_i \left[ \tilde Y_i -
+#'      \tilde T_i \, \tau(X_i) \right]^2}
+#'    which is fitted as a weighted regression of the pseudo-outcome
+#'    \eqn{\tilde Y_i / \tilde T_i} on the covariates with weights
+#'    \eqn{\tilde T_i^2}.
+#'
+#' The objective minimised here is exactly the [r_loss()] used elsewhere for
+#' model selection, so the R-Learner is the estimator that directly targets
+#' that score. When the treatment effect is constant it reduces to
+#' [ate_dml()]; unlike that scalar estimator, the R-Learner keeps the
+#' second-stage model and can predict CATEs on new test data.
+#'
+#' The weighted formulation requires a `tau_learner` that supports
+#' observation weights (`"weights" %in% learner$properties`). If it does not,
+#' the R-Learner falls back to an unweighted regression of the pseudo-outcome
+#' and issues a warning. As with [ate_dml()], small \eqn{\tilde T_i} inflate
+#' the pseudo-outcome, so `ps_trim` is recommended with flexible propensity
+#' learners.
+#'
+#' @inheritParams dr_learner
+#' @param outcome_learner An mlr3 regression learner for the conditional
+#'   outcome mean \eqn{m(x) = E[Y | X]} (the treatment is excluded from the
+#'   features), e.g. `mlr3::lrn("regr.ranger")`.
+#' @param tau_learner Optional mlr3 regression learner for the second-stage
+#'   weighted pseudo-outcome regression. Defaults to a clone of
+#'   `outcome_learner`.
+#'
+#' @return A fitted CATE model of class `c("r_learner", "cate_learner")`.
+#'   Use [predict()] to obtain CATE estimates for new data and [ate()] for
+#'   their average.
+#'
+#' @examples
+#' \donttest{
+#' library(mlr3)
+#' data(synth_train)
+#' data(synth_test)
+#' set.seed(1)
+#' m <- r_learner(synth_train, outcome = "y", treatment = "t",
+#'                outcome_learner = lrn("regr.rpart"),
+#'                ps_learner = lrn("classif.rpart"),
+#'                ps_trim = 0.01)
+#' tau_hat <- predict(m, synth_test)
+#' pehe(synth_test$tau, tau_hat)
+#' }
+#'
+#' @references
+#' Nie, X., & Wager, S. (2021). Quasi-oracle estimation of heterogeneous
+#' treatment effects. *Biometrika*, 108(2), 299-319.
+#'
+#' @seealso [s_learner()], [t_learner()], [x_learner()], [dr_learner()],
+#'   [ate_dml()], [r_loss()]
+#' @export
+r_learner <- function(data, outcome = "y", treatment = "t", outcome_learner,
+                      ps_learner, tau_learner = NULL, covariates = NULL,
+                      folds = 5, ps_trim = NULL) {
+  assert_data(data, outcome, treatment)
+  covariates <- resolve_covariates(data, outcome, treatment, covariates)
+  if (is.null(tau_learner)) tau_learner <- outcome_learner
+  y <- data[[outcome]]
+  t <- as.integer(data[[treatment]])
+  fold_id <- make_folds(nrow(data), folds)
+
+  # Stage 1: cross-fitted nuisances and Robinson residuals.
+  e <- crossfit_ps(data, treatment, covariates, ps_learner, fold_id, ps_trim)
+  m <- crossfit_outcome_mean(data, outcome, covariates, outcome_learner,
+                             fold_id)
+  y_res <- y - m
+  t_res <- t - e
+
+  # Stage 2: minimise the R-Loss via a weighted regression of the
+  # pseudo-outcome (y_res / t_res) on the covariates with weights t_res^2.
+  d <- data[, covariates, drop = FALSE]
+  d[[outcome]] <- y_res / t_res
+  w <- t_res^2
+  if (regr_supports_weights(tau_learner)) {
+    tau <- fit_regr_weighted(d, outcome, w, tau_learner)
+  } else {
+    warning(sprintf(
+      paste0("`tau_learner` ('%s') does not support observation weights; ",
+             "falling back to an unweighted R-Learner regression."),
+      tau_learner$id), call. = FALSE)
+    tau <- fit_regr(d, outcome, tau_learner)
+  }
+
+  new_cate_learner("r_learner", list(tau = tau), outcome, treatment,
+                   covariates)
+}
+
+#' @describeIn r_learner Predict CATEs for new data.
+#' @param object A fitted `r_learner` model.
+#' @param newdata A `data.frame` containing at least the covariate columns.
+#' @param ... Ignored.
+#' @export
+predict.r_learner <- function(object, newdata, ...) {
   nd <- strip_newdata(object, newdata)
   predict_regr(object$models$tau, nd)
 }
@@ -363,7 +474,8 @@ ate.cate_learner <- function(object, newdata, ...) {
 #' @export
 print.cate_learner <- function(x, ...) {
   labels <- c(s_learner = "S-Learner", t_learner = "T-Learner",
-              x_learner = "X-Learner", dr_learner = "DR-Learner")
+              x_learner = "X-Learner", dr_learner = "DR-Learner",
+              r_learner = "R-Learner")
   label <- labels[[class(x)[[1L]]]]
   cat(label, "(fitted)\n")
   cat("  Outcome:   ", x$outcome, "\n", sep = "")

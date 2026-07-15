@@ -15,7 +15,10 @@ test_that("meta-learners fit, predict and beat a zero baseline", {
                   covariates = c("x1", "x2")),
     dr = dr_learner(train, outcome_learner = regr_learner(),
                     ps_learner = classif_learner(),
-                    covariates = c("x1", "x2"), folds = 5)
+                    covariates = c("x1", "x2"), folds = 5),
+    r = r_learner(train, outcome_learner = regr_learner(),
+                  ps_learner = classif_learner(),
+                  covariates = c("x1", "x2"), folds = 5, ps_trim = 0.05)
   )
 
   pehe_zero <- pehe(tau_true, rep(0, nrow(test)))
@@ -79,6 +82,43 @@ test_that("dr_learner works without cross-fitting (folds = 1)", {
                   ps_learner = classif_learner(),
                   covariates = c("x1", "x2"), folds = 1)
   expect_s3_class(m, "dr_learner")
+  expect_true(all(is.finite(predict(m, d))))
+})
+
+test_that("r_learner accepts a separate second-stage learner", {
+  skip_if_no_learners()
+  d <- sim_hetero(n = 1000)
+  m <- r_learner(d, outcome_learner = regr_learner(),
+                 ps_learner = classif_learner(),
+                 tau_learner = mlr3::lrn("regr.featureless"),
+                 covariates = c("x1", "x2"), folds = 2, ps_trim = 0.05)
+  expect_equal(m$models$tau$id, "regr.featureless")
+  expect_length(predict(m, d), nrow(d))
+})
+
+test_that("r_learner works without cross-fitting (folds = 1)", {
+  skip_if_no_learners()
+  d <- sim_hetero(n = 1000)
+  m <- r_learner(d, outcome_learner = regr_learner(),
+                 ps_learner = classif_learner(),
+                 covariates = c("x1", "x2"), folds = 1, ps_trim = 0.05)
+  expect_s3_class(m, "r_learner")
+  expect_true(all(is.finite(predict(m, d))))
+})
+
+test_that("r_learner falls back to unweighted fit without weight support", {
+  skip_if_no_learners()
+  d <- sim_hetero(n = 800)
+  # A learner that does not support observation weights.
+  no_w <- regr_no_weights()
+  expect_warning(
+    m <- r_learner(d, outcome_learner = regr_learner(),
+                   ps_learner = classif_learner(),
+                   tau_learner = no_w,
+                   covariates = c("x1", "x2"), folds = 2, ps_trim = 0.05),
+    "does not support observation weights"
+  )
+  expect_s3_class(m, "r_learner")
   expect_true(all(is.finite(predict(m, d))))
 })
 

@@ -114,5 +114,6 @@ heterogeneous causal effects. \emph{Electronic Journal of Statistics}, 17(2),
 3008-3049.
 }
 \seealso{
-\code{\link[=s_learner]{s_learner()}}, \code{\link[=t_learner]{t_learner()}}, \code{\link[=x_learner]{x_learner()}}, \code{\link[=ate_dr]{ate_dr()}}
+\code{\link[=s_learner]{s_learner()}}, \code{\link[=t_learner]{t_learner()}}, \code{\link[=x_learner]{x_learner()}}, \code{\link[=r_learner]{r_learner()}},
+\code{\link[=ate_dr]{ate_dr()}}
 }

@@ -23,7 +23,8 @@ on the mlr3 ecosystem.
 \section{CATE meta-learners}{
 
 \itemize{
-\item \code{\link[=s_learner]{s_learner()}}, \code{\link[=t_learner]{t_learner()}}, \code{\link[=x_learner]{x_learner()}}, \code{\link[=dr_learner]{dr_learner()}}
+\item \code{\link[=s_learner]{s_learner()}}, \code{\link[=t_learner]{t_learner()}}, \code{\link[=x_learner]{x_learner()}}, \code{\link[=dr_learner]{dr_learner()}} (doubly
+robust), \code{\link[=r_learner]{r_learner()}} (R-Loss / partially linear DML)
 }
 }
 

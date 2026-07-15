@@ -11,7 +11,8 @@
 #' * [ate_dml()] - double machine learning (partially linear model)
 #'
 #' @section CATE meta-learners:
-#' * [s_learner()], [t_learner()], [x_learner()], [dr_learner()]
+#' * [s_learner()], [t_learner()], [x_learner()], [dr_learner()] (doubly
+#'   robust), [r_learner()] (R-Loss / partially linear DML)
 #'
 #' @section Evaluation:
 #' * [eps_ate()] - absolute ATE error (needs ground truth)

@@ -74,6 +74,28 @@ predict_regr <- function(model, newdata) {
   model$predict_newdata(newdata = newdata)$response
 }
 
+# Does an mlr3 regression learner support observation weights?
+regr_supports_weights <- function(learner) {
+  "weights" %in% learner$properties
+}
+
+# Fit a regression learner with observation weights. The weights are attached
+# through the mlr3 "weight" column role (renamed "weights_learner" in newer
+# mlr3), which is detected from the task so both APIs are supported.
+fit_regr_weighted <- function(df, target, weights, learner) {
+  df[["..weights.."]] <- weights
+  task <- mlr3::as_task_regr(df, target = target, id = "causalmlr")
+  w_role <- if ("weights_learner" %in% names(task$col_roles)) {
+    "weights_learner"
+  } else {
+    "weight"
+  }
+  task$set_col_roles("..weights..", roles = w_role)
+  lr <- clone_learner(learner, "regr")
+  lr$train(task)
+  lr
+}
+
 # Fit a propensity (classification) learner; `df` must contain the treatment
 # column, which is converted to a factor with levels c("0", "1").
 fit_propensity <- function(df, treatment, learner) {

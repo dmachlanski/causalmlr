@@ -114,12 +114,23 @@ m_dr <- dr_learner(synth_train, outcome = "y", treatment = "t",
                    outcome_learner = lrn("regr.rpart"),
                    ps_learner = lrn("classif.rpart"),
                    ps_trim = 0.01)
+
+m_r <- r_learner(synth_train, outcome = "y", treatment = "t",
+                 outcome_learner = lrn("regr.rpart"),
+                 ps_learner = lrn("classif.rpart"),
+                 ps_trim = 0.01)
 ```
 
 The `dr_learner()` (Kennedy, 2023) is doubly robust: it cross-fits the
 propensity and outcome nuisances into an AIPW pseudo-outcome and regresses
 that on the covariates, so it stays consistent if *either* nuisance model
 is correct.
+
+The `r_learner()` (Nie & Wager, 2021) is the heterogeneous-effect version of
+the partially linear DML estimator `ate_dml()`: it cross-fits the outcome and
+propensity residuals and fits a weighted regression that directly minimises
+the R-Loss (see below). It falls back to an unweighted regression when the
+second-stage learner does not support observation weights.
 
 `predict()` returns a vector of CATE estimates, one per row; `ate()`
 averages them:
@@ -138,7 +149,8 @@ true and predicted CATEs:
 c(S = pehe(synth_test$tau, tau_s),
   T = pehe(synth_test$tau, predict(m_t, synth_test)),
   X = pehe(synth_test$tau, predict(m_x, synth_test)),
-  DR = pehe(synth_test$tau, predict(m_dr, synth_test)))
+  DR = pehe(synth_test$tau, predict(m_dr, synth_test)),
+  R = pehe(synth_test$tau, predict(m_r, synth_test)))
 ```
 
 ## Model selection without ground truth: the R-Loss
