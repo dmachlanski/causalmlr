@@ -12,7 +12,10 @@ test_that("meta-learners fit, predict and beat a zero baseline", {
                   covariates = c("x1", "x2")),
     x = x_learner(train, learner = regr_learner(),
                   ps_learner = classif_learner(),
-                  covariates = c("x1", "x2"))
+                  covariates = c("x1", "x2")),
+    dr = dr_learner(train, outcome_learner = regr_learner(),
+                    ps_learner = classif_learner(),
+                    covariates = c("x1", "x2"), folds = 5)
   )
 
   pehe_zero <- pehe(tau_true, rep(0, nrow(test)))
@@ -54,6 +57,29 @@ test_that("fitting does not mutate the user's learner or data", {
   m <- s_learner(d, learner = lr, covariates = c("x1", "x2"))
   expect_identical(d, d_copy)
   expect_null(lr$model)  # user's learner instance stays untrained
+})
+
+test_that("dr_learner accepts a separate second-stage learner", {
+  skip_if_no_learners()
+  d <- sim_hetero(n = 1000)
+  m <- dr_learner(d, outcome_learner = regr_learner(),
+                  ps_learner = classif_learner(),
+                  tau_learner = mlr3::lrn("regr.featureless"),
+                  covariates = c("x1", "x2"), folds = 2, ps_trim = 0.05)
+  expect_equal(m$models$tau$id, "regr.featureless")
+  expect_length(predict(m, d), nrow(d))
+  # A featureless second stage predicts the mean pseudo-outcome (~ ATE).
+  expect_equal(ate(m, d), mean(d$tau), tolerance = 0.5)
+})
+
+test_that("dr_learner works without cross-fitting (folds = 1)", {
+  skip_if_no_learners()
+  d <- sim_hetero(n = 1000)
+  m <- dr_learner(d, outcome_learner = regr_learner(),
+                  ps_learner = classif_learner(),
+                  covariates = c("x1", "x2"), folds = 1)
+  expect_s3_class(m, "dr_learner")
+  expect_true(all(is.finite(predict(m, d))))
 })
 
 test_that("print method describes the model", {

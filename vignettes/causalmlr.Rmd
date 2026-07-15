@@ -109,7 +109,17 @@ m_t <- t_learner(synth_train, outcome = "y", treatment = "t",
 m_x <- x_learner(synth_train, outcome = "y", treatment = "t",
                  learner = lrn("regr.rpart"),
                  ps_learner = lrn("classif.rpart"))
+
+m_dr <- dr_learner(synth_train, outcome = "y", treatment = "t",
+                   outcome_learner = lrn("regr.rpart"),
+                   ps_learner = lrn("classif.rpart"),
+                   ps_trim = 0.01)
 ```
+
+The `dr_learner()` (Kennedy, 2023) is doubly robust: it cross-fits the
+propensity and outcome nuisances into an AIPW pseudo-outcome and regresses
+that on the covariates, so it stays consistent if *either* nuisance model
+is correct.
 
 `predict()` returns a vector of CATE estimates, one per row; `ate()`
 averages them:
@@ -127,7 +137,8 @@ true and predicted CATEs:
 ```{r cate-eval}
 c(S = pehe(synth_test$tau, tau_s),
   T = pehe(synth_test$tau, predict(m_t, synth_test)),
-  X = pehe(synth_test$tau, predict(m_x, synth_test)))
+  X = pehe(synth_test$tau, predict(m_x, synth_test)),
+  DR = pehe(synth_test$tau, predict(m_dr, synth_test)))
 ```
 
 ## Model selection without ground truth: the R-Loss
@@ -172,8 +183,9 @@ m_best <- s_learner(synth_train, outcome = "y", treatment = "t",
 pehe(synth_test$tau, predict(m_best, synth_test))
 ```
 
-Note that the same recipe compares *different* estimators too (S vs T vs X,
-or different base learners) - the R-Loss only sees the CATE predictions.
+Note that the same recipe compares *different* estimators too (S vs T vs X
+vs DR, or different base learners) - the R-Loss only sees the CATE
+predictions.
 
 ## Tuning nuisance models directly with mlr3tuning
 
@@ -219,6 +231,8 @@ R-Loss workflow above targets the causal estimates themselves.
   treatment and structural parameters. *The Econometrics Journal*.
 - Hill, J. L. (2011). Bayesian nonparametric modeling for causal
   inference. *JCGS*.
+- Kennedy, E. H. (2023). Towards optimal doubly robust estimation of
+  heterogeneous causal effects. *Electronic Journal of Statistics*.
 - Künzel, S. R. et al. (2019). Metalearners for estimating heterogeneous
   treatment effects using machine learning. *PNAS*.
 - Machlanski, D., Samothrakis, S., & Clarke, P. (2023). Hyperparameter

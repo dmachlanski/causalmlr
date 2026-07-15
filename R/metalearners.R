@@ -229,6 +229,105 @@ predict.x_learner <- function(object, newdata, ...) {
   e * tau0 + (1 - e) * tau1
 }
 
+#' DR-Learner for CATE estimation
+#'
+#' The DR-Learner ("doubly robust learner"; Kennedy, 2023) is a two-stage
+#' meta-learner that turns the augmented inverse propensity weighting (AIPW)
+#' score used by [ate_dr()] into a model that predicts individual CATEs.
+#' 1. Cross-fit the nuisance functions: the propensity score
+#'    \eqn{\hat e(x) = P(T = 1 | X = x)} and the potential-outcome models
+#'    \eqn{\hat\mu_0(x)}, \eqn{\hat\mu_1(x)} from a single outcome model that
+#'    includes the treatment as a feature.
+#' 2. Form the doubly robust pseudo-outcome
+#'    \deqn{\psi_i = \hat\mu_1(X_i) - \hat\mu_0(X_i) +
+#'      \frac{T_i (Y_i - \hat\mu_1(X_i))}{\hat e(X_i)} -
+#'      \frac{(1 - T_i)(Y_i - \hat\mu_0(X_i))}{1 - \hat e(X_i)}}
+#'    and regress it on the covariates to obtain the final CATE model
+#'    \eqn{\hat\tau(x) = E[\psi | X = x]}.
+#'
+#' Because the pseudo-outcome has conditional mean equal to the true CATE
+#' whenever either nuisance is correctly specified, the second-stage
+#' regression targets the CATE directly. Cross-fitting the nuisances (the
+#' default `folds = 5`) makes the pseudo-outcome orthogonal to nuisance
+#' estimation error, so flexible learners can be used without overfitting
+#' bias. Unlike [ate_dr()], which averages \eqn{\psi_i} to a scalar ATE, the
+#' DR-Learner keeps the second-stage model and can therefore predict CATEs on
+#' new test data.
+#'
+#' @inheritParams ate_dr
+#' @param outcome_learner An mlr3 regression learner for the stage-1 outcome
+#'   model, e.g. `mlr3::lrn("regr.ranger")`. The treatment indicator is
+#'   included as a feature and potential outcomes are predicted by setting it
+#'   to 0 and 1.
+#' @param tau_learner Optional mlr3 regression learner for the second-stage
+#'   pseudo-outcome regression. Defaults to a clone of `outcome_learner`.
+#' @param folds Number of cross-fitting folds for the nuisance models.
+#'   Default `5`. Cross-fitting is a core ingredient of the DR-Learner;
+#'   `folds = 1` (in-sample nuisance estimates) is allowed but not recommended
+#'   with flexible learners.
+#'
+#' @return A fitted CATE model of class `c("dr_learner", "cate_learner")`.
+#'   Use [predict()] to obtain CATE estimates for new data and [ate()] for
+#'   their average.
+#'
+#' @examples
+#' \donttest{
+#' library(mlr3)
+#' data(synth_train)
+#' data(synth_test)
+#' set.seed(1)
+#' m <- dr_learner(synth_train, outcome = "y", treatment = "t",
+#'                 outcome_learner = lrn("regr.rpart"),
+#'                 ps_learner = lrn("classif.rpart"),
+#'                 ps_trim = 0.01)
+#' tau_hat <- predict(m, synth_test)
+#' pehe(synth_test$tau, tau_hat)
+#' }
+#'
+#' @references
+#' Kennedy, E. H. (2023). Towards optimal doubly robust estimation of
+#' heterogeneous causal effects. *Electronic Journal of Statistics*, 17(2),
+#' 3008-3049.
+#'
+#' @seealso [s_learner()], [t_learner()], [x_learner()], [ate_dr()]
+#' @export
+dr_learner <- function(data, outcome = "y", treatment = "t", outcome_learner,
+                       ps_learner, tau_learner = NULL, covariates = NULL,
+                       folds = 5, ps_trim = NULL) {
+  assert_data(data, outcome, treatment)
+  covariates <- resolve_covariates(data, outcome, treatment, covariates)
+  if (is.null(tau_learner)) tau_learner <- outcome_learner
+  y <- data[[outcome]]
+  t <- as.integer(data[[treatment]])
+  fold_id <- make_folds(nrow(data), folds)
+
+  # Stage 1: cross-fitted nuisance functions.
+  e <- crossfit_ps(data, treatment, covariates, ps_learner, fold_id, ps_trim)
+  po <- crossfit_outcome_po(data, outcome, treatment, covariates,
+                            outcome_learner, fold_id)
+
+  # Stage 2: regress the doubly robust pseudo-outcome on the covariates.
+  psi <- po$mu1 - po$mu0 +
+    (t * (y - po$mu1)) / e -
+    ((1L - t) * (y - po$mu0)) / (1 - e)
+  d <- data[, covariates, drop = FALSE]
+  d[[outcome]] <- psi
+  tau <- fit_regr(d, outcome, tau_learner)
+
+  new_cate_learner("dr_learner", list(tau = tau), outcome, treatment,
+                   covariates)
+}
+
+#' @describeIn dr_learner Predict CATEs for new data.
+#' @param object A fitted `dr_learner` model.
+#' @param newdata A `data.frame` containing at least the covariate columns.
+#' @param ... Ignored.
+#' @export
+predict.dr_learner <- function(object, newdata, ...) {
+  nd <- strip_newdata(object, newdata)
+  predict_regr(object$models$tau, nd)
+}
+
 #' Average treatment effect of a fitted CATE model
 #'
 #' Averages the CATE predictions of a fitted meta-learner over the rows of
@@ -264,7 +363,7 @@ ate.cate_learner <- function(object, newdata, ...) {
 #' @export
 print.cate_learner <- function(x, ...) {
   labels <- c(s_learner = "S-Learner", t_learner = "T-Learner",
-              x_learner = "X-Learner")
+              x_learner = "X-Learner", dr_learner = "DR-Learner")
   label <- labels[[class(x)[[1L]]]]
   cat(label, "(fitted)\n")
   cat("  Outcome:   ", x$outcome, "\n", sep = "")
