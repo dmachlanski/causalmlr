@@ -226,6 +226,47 @@ between true and predicted CATEs:</p>
 <span><span class="co">#&gt; 1.4743224 1.8315454 0.8750192 0.6746229 0.3699063</span></span></code></pre></div>
 </div>
 <div class="section level2">
+<h2 id="confidence-intervals-for-predicted-cates">Confidence intervals for predicted CATEs<a class="anchor" aria-label="anchor" href="#confidence-intervals-for-predicted-cates"></a>
+</h2>
+<p><code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> returns point estimates only. Unlike the ATE
+estimators - which carry a closed-form standard error and a
+<code><a href="https://rdrr.io/r/stats/confint.html" class="external-link">confint()</a></code> method - there is no analytic standard error for
+<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mover><mi>τ</mi><mo accent="true">̂</mo></mover><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">\hat\tau(x)</annotation></semantics></math>
+when the meta-learner wraps an arbitrary machine-learning base learner.
+<code><a href="../reference/cate_ci.html">cate_ci()</a></code> instead uses the <strong>nonparametric
+bootstrap</strong>: it resamples the training rows, refits the
+<em>entire</em> pipeline (nuisance models and cross-fitting included),
+and re-predicts on the supplied data <code>n_boot</code> times, then
+forms a pointwise interval from the bootstrap distribution at each row.
+It works the same way for all five meta-learners, so you pass the fitted
+model and the original training data:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">ci</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/cate_ci.html">cate_ci</a></span><span class="op">(</span><span class="va">m_t</span>, <span class="va">synth_test</span>, train_data <span class="op">=</span> <span class="va">synth_train</span>, n_boot <span class="op">=</span> <span class="fl">100</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">ci</span><span class="op">)</span></span>
+<span><span class="co">#&gt;     estimate        se       lower     upper</span></span>
+<span><span class="co">#&gt; 1 -1.2920574 1.3449870 -2.85874442 1.9112984</span></span>
+<span><span class="co">#&gt; 2 -0.2280423 2.0505628 -4.08871768 2.7944808</span></span>
+<span><span class="co">#&gt; 3  1.5599339 0.9771083 -0.09834918 3.4752596</span></span>
+<span><span class="co">#&gt; 4 -0.4125864 1.4170369 -2.34349639 3.1777231</span></span>
+<span><span class="co">#&gt; 5  0.1015885 1.4697517 -2.22515306 3.4997011</span></span>
+<span><span class="co">#&gt; 6 -2.9193186 1.4292442 -4.94250806 0.5162985</span></span></code></pre></div>
+<p>The result has one row per row of <code>newdata</code>, with the
+point <code>estimate</code>, the bootstrap standard error
+<code>se</code>, and the interval limits
+<code>lower</code>/<code>upper</code>. The default
+<code>type = "percentile"</code> uses the empirical quantiles of the
+bootstrap CATEs; <code>type = "normal"</code> centres a symmetric
+interval on the point estimate instead.</p>
+<p>Two caveats. First, refitting the whole pipeline <code>n_boot</code>
+times is expensive - 200 replicates (the default) means 200 refits - so
+budget accordingly and set the seed for reproducibility. Second,
+bootstrap coverage for CATEs estimated with flexible learners is only
+approximate and can be anti-conservative; read these intervals as a
+measure of estimation stability rather than exact frequentist
+coverage.</p>
+</div>
+<div class="section level2">
 <h2 id="model-selection-without-ground-truth-the-r-loss">Model selection without ground truth: the R-Loss<a class="anchor" aria-label="anchor" href="#model-selection-without-ground-truth-the-r-loss"></a>
 </h2>
 <p>Real observational data has no <code>tau</code> column, so PEHE
@@ -241,7 +282,7 @@ and the propensity score
 models on it once (cross-fitted by default), then score any number of
 candidate CATE models. Here we tune the <code>maxdepth</code>
 hyperparameter of an S-Learner:</p>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">idx</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">synth_train</span><span class="op">)</span>, <span class="fl">0.7</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">synth_train</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">train</span> <span class="op">&lt;-</span> <span class="va">synth_train</span><span class="op">[</span><span class="va">idx</span>, <span class="op">]</span></span>
 <span><span class="va">valid</span> <span class="op">&lt;-</span> <span class="va">synth_train</span><span class="op">[</span><span class="op">-</span><span class="va">idx</span>, <span class="op">]</span></span>
@@ -250,6 +291,8 @@ hyperparameter of an S-Learner:</p>
 <span>                       outcome_learner <span class="op">=</span> <span class="fu"><a href="https://mlr3.mlr-org.com/reference/mlr_sugar.html" class="external-link">lrn</a></span><span class="op">(</span><span class="st">"regr.rpart"</span><span class="op">)</span>,</span>
 <span>                       ps_learner <span class="op">=</span> <span class="fu"><a href="https://mlr3.mlr-org.com/reference/mlr_sugar.html" class="external-link">lrn</a></span><span class="op">(</span><span class="st">"classif.rpart"</span><span class="op">)</span>,</span>
 <span>                       folds <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Warning: Extreme propensity scores detected (near 0 or 1); estimates may be</span></span>
+<span><span class="co">#&gt; unstable. Consider setting `ps_trim`.</span></span>
 <span></span>
 <span><span class="va">scores</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">sapply</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="kw">function</span><span class="op">(</span><span class="va">md</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">m</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/s_learner.html">s_learner</a></span><span class="op">(</span><span class="va">train</span>, outcome <span class="op">=</span> <span class="st">"y"</span>, treatment <span class="op">=</span> <span class="st">"t"</span>,</span>
@@ -257,20 +300,20 @@ hyperparameter of an S-Learner:</p>
 <span>  <span class="fu"><a href="../reference/r_loss.html">r_loss</a></span><span class="op">(</span><span class="va">nuis</span>, <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span><span class="va">m</span>, <span class="va">valid</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">}</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>maxdepth <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, r_loss <span class="op">=</span> <span class="va">scores</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   maxdepth    r_loss</span></span>
-<span><span class="co">#&gt; 1        1 11.220570</span></span>
-<span><span class="co">#&gt; 2        2  6.353151</span></span>
-<span><span class="co">#&gt; 3        3  6.350575</span></span>
-<span><span class="co">#&gt; 4        4  6.411571</span></span>
-<span><span class="co">#&gt; 5        5  6.411571</span></span></code></pre></div>
+<span><span class="co">#&gt;   maxdepth   r_loss</span></span>
+<span><span class="co">#&gt; 1        1 9.467719</span></span>
+<span><span class="co">#&gt; 2        2 5.423057</span></span>
+<span><span class="co">#&gt; 3        3 5.733959</span></span>
+<span><span class="co">#&gt; 4        4 5.683873</span></span>
+<span><span class="co">#&gt; 5        5 5.683873</span></span></code></pre></div>
 <p>The candidate with the lowest R-Loss is then refit on the full
 training data:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">best_md</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">scores</span><span class="op">)</span></span>
 <span><span class="va">m_best</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/s_learner.html">s_learner</a></span><span class="op">(</span><span class="va">synth_train</span>, outcome <span class="op">=</span> <span class="st">"y"</span>, treatment <span class="op">=</span> <span class="st">"t"</span>,</span>
 <span>                    learner <span class="op">=</span> <span class="fu"><a href="https://mlr3.mlr-org.com/reference/mlr_sugar.html" class="external-link">lrn</a></span><span class="op">(</span><span class="st">"regr.rpart"</span>, maxdepth <span class="op">=</span> <span class="va">best_md</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/pehe.html">pehe</a></span><span class="op">(</span><span class="va">synth_test</span><span class="op">$</span><span class="va">tau</span>, <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span><span class="va">m_best</span>, <span class="va">synth_test</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 1.515881</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 0.06171868</span></span></code></pre></div>
 <p>Note that the same recipe compares <em>different</em> estimators too
 (S vs T vs X vs DR, or different base learners) - the R-Loss only sees
 the CATE predictions.</p>
@@ -283,7 +326,7 @@ the CATE predictions.</p>
 supervised objective - composes naturally with <code>mlr3tuning</code>.
 An <code>AutoTuner</code> is itself a learner, so it can be passed
 anywhere a learner is expected:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mlr3tuning.mlr-org.com" class="external-link">mlr3tuning</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">at</span> <span class="op">&lt;-</span> <span class="fu">auto_tuner</span><span class="op">(</span></span>

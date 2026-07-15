@@ -1,11 +1,21 @@
 # Meta-learners for conditional average treatment effect (CATE) estimation.
 
-new_cate_learner <- function(subclass, models, outcome, treatment, covariates) {
+new_cate_learner <- function(subclass, models, outcome, treatment, covariates,
+                             refit = NULL) {
   structure(
     list(models = models, outcome = outcome, treatment = treatment,
-         covariates = covariates),
+         covariates = covariates, refit = refit),
     class = c(subclass, "cate_learner")
   )
+}
+
+# Build a closure that refits the same learner pipeline on new data. It
+# captures only the (small) learner templates and settings -- never the
+# training data -- so fitted objects stay lightweight. Used by [cate_ci()] to
+# generate bootstrap replicates uniformly across the meta-learners.
+make_refit <- function(fn, ...) {
+  args <- list(...)
+  function(data) do.call(fn, c(list(data), args))
 }
 
 # Drop outcome/treatment columns that may or may not be present in newdata.
@@ -65,7 +75,10 @@ s_learner <- function(data, outcome = "y", treatment = "t", learner,
   df[[treatment]] <- as.integer(df[[treatment]])
   model <- fit_regr(df, outcome, learner)
   new_cate_learner("s_learner", list(mu = model), outcome, treatment,
-                   covariates)
+                   covariates,
+                   refit = make_refit(s_learner, outcome = outcome,
+                                      treatment = treatment, learner = learner,
+                                      covariates = covariates))
 }
 
 #' @describeIn s_learner Predict CATEs for new data. Returns a numeric
@@ -126,7 +139,11 @@ t_learner <- function(data, outcome = "y", treatment = "t", learner,
   m0 <- fit_regr(df[t == 0L, , drop = FALSE], outcome, learner)
   m1 <- fit_regr(df[t == 1L, , drop = FALSE], outcome, learner1)
   new_cate_learner("t_learner", list(mu0 = m0, mu1 = m1), outcome, treatment,
-                   covariates)
+                   covariates,
+                   refit = make_refit(t_learner, outcome = outcome,
+                                      treatment = treatment, learner = learner,
+                                      learner1 = learner1,
+                                      covariates = covariates))
 }
 
 #' @describeIn t_learner Predict CATEs for new data.
@@ -213,7 +230,12 @@ x_learner <- function(data, outcome = "y", treatment = "t", learner,
   new_cate_learner("x_learner",
                    list(mu0 = m0, mu1 = m1, tau0 = tau0, tau1 = tau1,
                         ps = e_model),
-                   outcome, treatment, covariates)
+                   outcome, treatment, covariates,
+                   refit = make_refit(x_learner, outcome = outcome,
+                                      treatment = treatment, learner = learner,
+                                      ps_learner = ps_learner,
+                                      tau_learner = tau_learner,
+                                      covariates = covariates))
 }
 
 #' @describeIn x_learner Predict CATEs for new data.
@@ -316,7 +338,14 @@ dr_learner <- function(data, outcome = "y", treatment = "t", outcome_learner,
   tau <- fit_regr(d, outcome, tau_learner)
 
   new_cate_learner("dr_learner", list(tau = tau), outcome, treatment,
-                   covariates)
+                   covariates,
+                   refit = make_refit(dr_learner, outcome = outcome,
+                                      treatment = treatment,
+                                      outcome_learner = outcome_learner,
+                                      ps_learner = ps_learner,
+                                      tau_learner = tau_learner,
+                                      covariates = covariates, folds = folds,
+                                      ps_trim = ps_trim))
 }
 
 #' @describeIn dr_learner Predict CATEs for new data.
@@ -426,7 +455,14 @@ r_learner <- function(data, outcome = "y", treatment = "t", outcome_learner,
   }
 
   new_cate_learner("r_learner", list(tau = tau), outcome, treatment,
-                   covariates)
+                   covariates,
+                   refit = make_refit(r_learner, outcome = outcome,
+                                      treatment = treatment,
+                                      outcome_learner = outcome_learner,
+                                      ps_learner = ps_learner,
+                                      tau_learner = tau_learner,
+                                      covariates = covariates, folds = folds,
+                                      ps_trim = ps_trim))
 }
 
 #' @describeIn r_learner Predict CATEs for new data.
@@ -469,6 +505,133 @@ ate <- function(object, ...) {
 #' @export
 ate.cate_learner <- function(object, newdata, ...) {
   mean(predict(object, newdata))
+}
+
+#' Bootstrap confidence intervals for predicted CATEs
+#'
+#' Attaches pointwise confidence intervals to the CATE predictions of any
+#' fitted meta-learner ([s_learner()], [t_learner()], [x_learner()],
+#' [dr_learner()], [r_learner()]) using the nonparametric bootstrap. For each
+#' of `n_boot` replicates the training data is resampled with replacement, the
+#' entire learner pipeline (including any nuisance models and cross-fitting) is
+#' refitted, and CATEs are predicted for `newdata`. A pointwise interval is
+#' then formed from the bootstrap distribution at each row of `newdata`.
+#'
+#' Because the meta-learners accept arbitrary (and typically non-smooth)
+#' machine-learning base learners, no closed-form standard error is available
+#' for \eqn{\hat\tau(x)}; the bootstrap is the one mechanism that applies
+#' uniformly across all five learners. Two caveats are worth keeping in mind.
+#' First, bootstrap coverage for CATEs estimated with flexible learners is only
+#' approximate and can be anti-conservative, so the intervals are best read as
+#' a measure of estimation stability rather than exact frequentist coverage.
+#' Second, refitting the full pipeline `n_boot` times is computationally
+#' expensive. Set the seed with [set.seed()] beforehand for reproducibility.
+#'
+#' @param object A fitted meta-learner of class `"cate_learner"`.
+#' @param newdata A `data.frame` of points at which to predict CATEs and their
+#'   intervals; must contain the covariate columns.
+#' @param train_data The `data.frame` the model was fitted on (with the
+#'   outcome, treatment and covariate columns), used to draw the bootstrap
+#'   resamples on which the pipeline is refitted.
+#' @param n_boot Number of bootstrap replicates. Default `200`.
+#' @param level Confidence level. Default `0.95`.
+#' @param type Interval type. `"percentile"` (default) uses the empirical
+#'   quantiles of the bootstrap CATEs; `"normal"` centres the interval on the
+#'   point estimate and uses a normal-quantile multiple of the bootstrap
+#'   standard error.
+#' @param ... Ignored.
+#'
+#' @return A `data.frame` with one row per row of `newdata` and columns
+#'   `estimate` (the point CATE from `object`), `se` (the bootstrap standard
+#'   error) and `lower`/`upper` (the confidence limits).
+#'
+#' @examples
+#' \donttest{
+#' library(mlr3)
+#' data(synth_train)
+#' data(synth_test)
+#' set.seed(1)
+#' m <- t_learner(synth_train, outcome = "y", treatment = "t",
+#'                learner = lrn("regr.rpart"))
+#' ci <- cate_ci(m, synth_test, train_data = synth_train, n_boot = 50)
+#' head(ci)
+#' }
+#'
+#' @seealso [s_learner()], [t_learner()], [x_learner()], [dr_learner()],
+#'   [r_learner()]
+#' @export
+cate_ci <- function(object, newdata, train_data, n_boot = 200, level = 0.95,
+                    type = c("percentile", "normal"), ...) {
+  if (!inherits(object, "cate_learner")) {
+    stop("`object` must be a fitted meta-learner (class 'cate_learner').",
+         call. = FALSE)
+  }
+  if (!is.function(object$refit)) {
+    stop("`object` does not carry a refit method; it may have been created by ",
+         "an older version of the package. Refit the model to use `cate_ci()`.",
+         call. = FALSE)
+  }
+  if (!is.data.frame(train_data)) {
+    stop("`train_data` must be a data.frame.", call. = FALSE)
+  }
+  missing <- setdiff(c(object$covariates, object$outcome, object$treatment),
+                     names(train_data))
+  if (length(missing) > 0L) {
+    stop(sprintf("`train_data` is missing column(s): %s",
+                 paste(missing, collapse = ", ")), call. = FALSE)
+  }
+  if (!is.numeric(n_boot) || length(n_boot) != 1L || n_boot < 1) {
+    stop("`n_boot` must be a positive integer.", call. = FALSE)
+  }
+  if (!is.numeric(level) || length(level) != 1L || level <= 0 || level >= 1) {
+    stop("`level` must be a single number in (0, 1).", call. = FALSE)
+  }
+  type <- match.arg(type)
+  n_boot <- as.integer(n_boot)
+
+  estimate <- predict(object, newdata)
+  n <- nrow(train_data)
+  boot <- matrix(NA_real_, nrow = length(estimate), ncol = n_boot)
+  n_fail <- 0L
+  for (b in seq_len(n_boot)) {
+    idx <- sample.int(n, n, replace = TRUE)
+    pred_b <- tryCatch(
+      predict(object$refit(train_data[idx, , drop = FALSE]), newdata),
+      error = function(e) NULL)
+    # Drop degenerate replicates: a refit that errors, returns the wrong
+    # length, or produces non-finite CATEs (e.g. extreme propensities on a
+    # resample inflating a pseudo-outcome) would otherwise corrupt the
+    # bootstrap distribution.
+    if (is.null(pred_b) || length(pred_b) != length(estimate) ||
+        !all(is.finite(pred_b))) {
+      n_fail <- n_fail + 1L
+    } else {
+      boot[, b] <- pred_b
+    }
+  }
+  if (n_fail == n_boot) {
+    stop(sprintf(paste0("All %d bootstrap replicates failed to fit; cannot ",
+                        "form confidence intervals."), n_boot), call. = FALSE)
+  }
+  if (n_fail > 0L) {
+    warning(sprintf(
+      "%d of %d bootstrap replicates failed to fit and were dropped.",
+      n_fail, n_boot), call. = FALSE)
+  }
+
+  se <- apply(boot, 1L, stats::sd, na.rm = TRUE)
+  a <- (1 - level) / 2
+  if (type == "percentile") {
+    q <- apply(boot, 1L, stats::quantile, probs = c(a, 1 - a), na.rm = TRUE,
+               names = FALSE)
+    lower <- q[1L, ]
+    upper <- q[2L, ]
+  } else {
+    z <- stats::qnorm(1 - a)
+    lower <- estimate - z * se
+    upper <- estimate + z * se
+  }
+  data.frame(estimate = estimate, se = se, lower = lower, upper = upper)
 }
 
 #' @export

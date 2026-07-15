@@ -153,6 +153,37 @@ c(S = pehe(synth_test$tau, tau_s),
   R = pehe(synth_test$tau, predict(m_r, synth_test)))
 ```
 
+## Confidence intervals for predicted CATEs
+
+`predict()` returns point estimates only. Unlike the ATE estimators - which
+carry a closed-form standard error and a `confint()` method - there is no
+analytic standard error for $\hat\tau(x)$ when the meta-learner wraps an
+arbitrary machine-learning base learner. `cate_ci()` instead uses the
+**nonparametric bootstrap**: it resamples the training rows, refits the
+*entire* pipeline (nuisance models and cross-fitting included), and re-predicts
+on the supplied data `n_boot` times, then forms a pointwise interval from the
+bootstrap distribution at each row. It works the same way for all five
+meta-learners, so you pass the fitted model and the original training data:
+
+```{r cate-ci}
+set.seed(1)
+ci <- cate_ci(m_t, synth_test, train_data = synth_train, n_boot = 100)
+head(ci)
+```
+
+The result has one row per row of `newdata`, with the point `estimate`, the
+bootstrap standard error `se`, and the interval limits `lower`/`upper`. The
+default `type = "percentile"` uses the empirical quantiles of the bootstrap
+CATEs; `type = "normal"` centres a symmetric interval on the point estimate
+instead.
+
+Two caveats. First, refitting the whole pipeline `n_boot` times is expensive -
+200 replicates (the default) means 200 refits - so budget accordingly and set
+the seed for reproducibility. Second, bootstrap coverage for CATEs estimated
+with flexible learners is only approximate and can be anti-conservative; read
+these intervals as a measure of estimation stability rather than exact
+frequentist coverage.
+
 ## Model selection without ground truth: the R-Loss
 
 Real observational data has no `tau` column, so PEHE cannot be computed.

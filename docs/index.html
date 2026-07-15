@@ -77,7 +77,7 @@
 <li>
 <strong>ATE estimators</strong>: naive difference in means (<code><a href="reference/ate_naive.html">ate_naive()</a></code>), inverse propensity weighting (<code><a href="reference/ate_ipw.html">ate_ipw()</a></code>), doubly robust / AIPW (<code><a href="reference/ate_dr.html">ate_dr()</a></code>), double machine learning (<code><a href="reference/ate_dml.html">ate_dml()</a></code>) — all with standard errors, confidence intervals, optional cross-fitting and propensity trimming.</li>
 <li>
-<strong>CATE meta-learners</strong>: <code><a href="reference/s_learner.html">s_learner()</a></code>, <code><a href="reference/t_learner.html">t_learner()</a></code>, <code><a href="reference/x_learner.html">x_learner()</a></code>, <code><a href="reference/dr_learner.html">dr_learner()</a></code> (doubly robust), <code><a href="reference/r_learner.html">r_learner()</a></code> (R-Loss / partially linear DML).</li>
+<strong>CATE meta-learners</strong>: <code><a href="reference/s_learner.html">s_learner()</a></code>, <code><a href="reference/t_learner.html">t_learner()</a></code>, <code><a href="reference/x_learner.html">x_learner()</a></code>, <code><a href="reference/dr_learner.html">dr_learner()</a></code> (doubly robust), <code><a href="reference/r_learner.html">r_learner()</a></code> (R-Loss / partially linear DML), with optional bootstrap confidence intervals on predicted CATEs (<code><a href="reference/cate_ci.html">cate_ci()</a></code>).</li>
 <li>
 <strong>Evaluation</strong>: absolute ATE error (<code><a href="reference/eps_ate.html">eps_ate()</a></code>), PEHE (<code><a href="reference/pehe.html">pehe()</a></code>), and the <strong>R-Loss</strong> (<code><a href="reference/r_loss.html">r_loss()</a></code> + <code><a href="reference/rloss_nuisance.html">rloss_nuisance()</a></code>) for model selection and hyperparameter tuning when no ground truth is available.</li>
 <li>
@@ -129,7 +129,10 @@
 <span></span>
 <span><span class="va">tau_hat</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span><span class="va">m</span>, <span class="va">synth_test</span><span class="op">)</span>   <span class="co"># individual-level effects</span></span>
 <span><span class="fu"><a href="reference/ate.html">ate</a></span><span class="op">(</span><span class="va">m</span>, <span class="va">synth_test</span><span class="op">)</span>                  <span class="co"># their average</span></span>
-<span><span class="fu"><a href="reference/pehe.html">pehe</a></span><span class="op">(</span><span class="va">synth_test</span><span class="op">$</span><span class="va">tau</span>, <span class="va">tau_hat</span><span class="op">)</span>       <span class="co"># evaluation against ground truth</span></span></code></pre></div>
+<span><span class="fu"><a href="reference/pehe.html">pehe</a></span><span class="op">(</span><span class="va">synth_test</span><span class="op">$</span><span class="va">tau</span>, <span class="va">tau_hat</span><span class="op">)</span>       <span class="co"># evaluation against ground truth</span></span>
+<span></span>
+<span><span class="co"># Pointwise bootstrap confidence intervals for the predicted CATEs</span></span>
+<span><span class="fu"><a href="reference/cate_ci.html">cate_ci</a></span><span class="op">(</span><span class="va">m</span>, <span class="va">synth_test</span>, train_data <span class="op">=</span> <span class="va">synth_train</span>, n_boot <span class="op">=</span> <span class="fl">200</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="causal-model-selection-without-ground-truth">Causal model selection without ground truth<a class="anchor" aria-label="anchor" href="#causal-model-selection-without-ground-truth"></a>

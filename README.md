@@ -9,7 +9,7 @@ The package grew out of the labs of the [Essex Summer School in Social Science D
 ## Features
 
 - **ATE estimators**: naive difference in means (`ate_naive()`), inverse propensity weighting (`ate_ipw()`), doubly robust / AIPW (`ate_dr()`), double machine learning (`ate_dml()`) — all with standard errors, confidence intervals, optional cross-fitting and propensity trimming.
-- **CATE meta-learners**: `s_learner()`, `t_learner()`, `x_learner()`, `dr_learner()` (doubly robust), `r_learner()` (R-Loss / partially linear DML).
+- **CATE meta-learners**: `s_learner()`, `t_learner()`, `x_learner()`, `dr_learner()` (doubly robust), `r_learner()` (R-Loss / partially linear DML), with optional bootstrap confidence intervals on predicted CATEs (`cate_ci()`).
 - **Evaluation**: absolute ATE error (`eps_ate()`), PEHE (`pehe()`), and the **R-Loss** (`r_loss()` + `rloss_nuisance()`) for model selection and hyperparameter tuning when no ground truth is available.
 - **Benchmark datasets**: `sodium`, `synth_train`/`synth_test`, `ihdp_train`/`ihdp_test`, `jobs_train`/`jobs_test`, plus generic ML practice data (`abalone`, `diabetes`, `housing`, `spirals`).
 
@@ -58,6 +58,9 @@ m <- x_learner(synth_train, outcome = "y", treatment = "t",
 tau_hat <- predict(m, synth_test)   # individual-level effects
 ate(m, synth_test)                  # their average
 pehe(synth_test$tau, tau_hat)       # evaluation against ground truth
+
+# Pointwise bootstrap confidence intervals for the predicted CATEs
+cate_ci(m, synth_test, train_data = synth_train, n_boot = 200)
 ```
 
 ### Causal model selection without ground truth
