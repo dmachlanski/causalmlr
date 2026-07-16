@@ -67,6 +67,7 @@
 <div class="section level1">
 <div class="page-header"><h1 id="causalmlr">causalmlr<a class="anchor" aria-label="anchor" href="#causalmlr"></a>
 </h1></div>
+<p><a href="https://dmachlanski.r-universe.dev/" class="external-link"><img src="https://dmachlanski.r-universe.dev/badges/:name" alt="name status badge"></a> <a href="https://dmachlanski.r-universe.dev/causalmlr" class="external-link"><img src="https://dmachlanski.r-universe.dev/causalmlr/badges/version" alt="causalmlr status badge"></a></p>
 <p>Causal Machine Learning in R, built on the <a href="https://mlr3.mlr-org.com/" class="external-link">mlr3</a> ecosystem.</p>
 <p><code>causalmlr</code> estimates <strong>average treatment effects (ATE)</strong> and <strong>conditional average treatment effects (CATE)</strong> from observational data using machine learning. Any mlr3 regression or classification learner can be plugged in as a nuisance model — from <code>lrn("regr.lm")</code> to a fully tuned <code>AutoTuner</code>.</p>
 <p>The package grew out of the labs of the <a href="https://essexsummerschool.com/" class="external-link">Essex Summer School in Social Science Data Analysis</a> course <em>Machine Learning for Estimating Treatment Effects from Observational Data</em>.</p>
@@ -87,8 +88,11 @@
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>The package is not on CRAN yet. Install the development version from GitHub:</p>
+<p>Install from R-universe:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">'causalmlr'</span>, repos <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">'https://dmachlanski.r-universe.dev'</span>, <span class="st">'https://cloud.r-project.org'</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p>Install the development version from GitHub:</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"dmachlanski/causalmlr"</span><span class="op">)</span></span></code></pre></div>
 </div>
@@ -98,7 +102,7 @@
 <div class="section level3">
 <h3 id="ate-estimation">ATE estimation<a class="anchor" aria-label="anchor" href="#ate-estimation"></a>
 </h3>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/dmachlanski/causalmlr" class="external-link">causalmlr</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mlr3.mlr-org.com" class="external-link">mlr3</a></span><span class="op">)</span></span>
 <span></span>
@@ -119,7 +123,7 @@
 <div class="section level3">
 <h3 id="cate-estimation">CATE estimation<a class="anchor" aria-label="anchor" href="#cate-estimation"></a>
 </h3>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">synth_train</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">synth_test</span><span class="op">)</span></span>
 <span></span>
@@ -137,7 +141,7 @@
 <div class="section level3">
 <h3 id="causal-model-selection-without-ground-truth">Causal model selection without ground truth<a class="anchor" aria-label="anchor" href="#causal-model-selection-without-ground-truth"></a>
 </h3>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">nuis</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/rloss_nuisance.html">rloss_nuisance</a></span><span class="op">(</span><span class="va">valid_data</span>, outcome <span class="op">=</span> <span class="st">"y"</span>, treatment <span class="op">=</span> <span class="st">"t"</span>,</span>
 <span>                       outcome_learner <span class="op">=</span> <span class="fu"><a href="https://mlr3.mlr-org.com/reference/mlr_sugar.html" class="external-link">lrn</a></span><span class="op">(</span><span class="st">"regr.ranger"</span><span class="op">)</span>,</span>
 <span>                       ps_learner <span class="op">=</span> <span class="fu"><a href="https://mlr3.mlr-org.com/reference/mlr_sugar.html" class="external-link">lrn</a></span><span class="op">(</span><span class="st">"classif.ranger"</span><span class="op">)</span><span class="op">)</span></span>
@@ -149,18 +153,20 @@
 <div class="section level2">
 <h2 id="development-setup">Development setup<a class="anchor" aria-label="anchor" href="#development-setup"></a>
 </h2>
-<p>After cloning the repository, two one-time steps are needed before building (both require R with <code>devtools</code> installed):</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># 1. Generate the lazy-loaded datasets in data/ from the CSVs in data-raw/</span></span>
-<span><span class="co">#    (commit the resulting data/*.rda files so install_github() works)</span></span>
+<p>After cloning the repository, do the following steps (requires R with <code>devtools</code> and <code>pkgdown</code> installed):</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># 1. Generate lazy-loaded datasets:</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="st">"data-raw/prepare_data.R"</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># 2. Generate man/ pages from the roxygen comments</span></span>
+<span><span class="co"># 2. Generate man / pages from the roxygen comments:</span></span>
 <span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/document.html" class="external-link">document</a></span><span class="op">(</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Then the usual workflow:</span></span>
+<span><span class="co"># 3. Run tests and checks:</span></span>
 <span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/test.html" class="external-link">test</a></span><span class="op">(</span><span class="op">)</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/check.html" class="external-link">check</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://devtools.r-lib.org/reference/check.html" class="external-link">check</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># 4. Build the website:</span></span>
+<span><span class="fu">pkgdown</span><span class="fu">::</span><span class="fu"><a href="https://pkgdown.r-lib.org/reference/build_site.html" class="external-link">build_site</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="license">License<a class="anchor" aria-label="anchor" href="#license"></a>

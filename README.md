@@ -1,5 +1,8 @@
 # causalmlr
 
+[![name status badge](https://dmachlanski.r-universe.dev/badges/:name)](https://dmachlanski.r-universe.dev/)
+[![causalmlr status badge](https://dmachlanski.r-universe.dev/causalmlr/badges/version)](https://dmachlanski.r-universe.dev/causalmlr)
+
 Causal Machine Learning in R, built on the [mlr3](https://mlr3.mlr-org.com/) ecosystem.
 
 `causalmlr` estimates **average treatment effects (ATE)** and **conditional average treatment effects (CATE)** from observational data using machine learning. Any mlr3 regression or classification learner can be plugged in as a nuisance model — from `lrn("regr.lm")` to a fully tuned `AutoTuner`.
@@ -15,7 +18,13 @@ The package grew out of the labs of the [Essex Summer School in Social Science D
 
 ## Installation
 
-The package is not on CRAN yet. Install the development version from GitHub:
+Install from R-universe:
+
+```r
+install.packages('causalmlr', repos = c('https://dmachlanski.r-universe.dev', 'https://cloud.r-project.org'))
+```
+
+Install the development version from GitHub:
 
 ```r
 # install.packages("remotes")
@@ -77,19 +86,21 @@ See the vignette (`vignette("causalmlr")`) for a complete walkthrough, including
 
 ## Development setup
 
-After cloning the repository, two one-time steps are needed before building (both require R with `devtools` installed):
+After cloning the repository, do the following steps (requires R with `devtools` and `pkgdown` installed):
 
 ```r
-# 1. Generate the lazy-loaded datasets in data/ from the CSVs in data-raw/
-#    (commit the resulting data/*.rda files so install_github() works)
+# 1. Generate lazy-loaded datasets:
 source("data-raw/prepare_data.R")
 
-# 2. Generate man/ pages from the roxygen comments
+# 2. Generate man / pages from the roxygen comments:
 devtools::document()
 
-# Then the usual workflow:
+# 3. Run tests and checks:
 devtools::test()
 devtools::check()
+
+# 4. Build the website:
+pkgdown::build_site()
 ```
 
 ## License
